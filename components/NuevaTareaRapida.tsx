@@ -33,6 +33,35 @@ export default function NuevaTareaRapida({ abierta, equipo, yoId, fases, faseIni
   const [fase, setFase] = useState('');
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
+  const [confirmarCierre, setConfirmarCierre] = useState(false);
+  const panelCierre = useRef<HTMLDivElement>(null);
+
+  // ¿Escribieron o cambiaron algo desde que se abrió la ficha?
+  const sinGuardar =
+    !!abierta &&
+    (titulo.trim() !== abierta.titulo.trim() ||
+      [...responsables].sort().join(',') !== yoId ||
+      fecha !== '' ||
+      fase !== (faseInicial || ''));
+
+  useEffect(() => {
+    if (!sinGuardar) return;
+    const avisar = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [sinGuardar]);
+
+  useEffect(() => {
+    if (!confirmarCierre) return;
+    panelCierre.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    panelCierre.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [confirmarCierre]);
+
+  /** Cierre por la ✕ o por Esc: si ya escribieron algo, primero pregunta. */
+  function intentarCerrar() {
+    if (sinGuardar) return setConfirmarCierre(true);
+    ref.current?.close();
+  }
 
   useEffect(() => {
     const d = ref.current;
@@ -43,6 +72,7 @@ export default function NuevaTareaRapida({ abierta, equipo, yoId, fases, faseIni
       setFecha('');
       setFase(faseInicial || '');
       setError('');
+      setConfirmarCierre(false);
       if (!d.open) d.showModal();
     } else if (d.open) d.close();
   }, [abierta, yoId, faseInicial]);
@@ -66,6 +96,13 @@ export default function NuevaTareaRapida({ abierta, equipo, yoId, fases, faseIni
     <dialog
       ref={ref}
       onClose={onCerrar}
+      onCancel={(e) => {
+        // Tecla Esc (o botón atrás en el celular).
+        if (!sinGuardar) return;
+        e.preventDefault();
+        if (confirmarCierre) setConfirmarCierre(false);
+        else intentarCerrar();
+      }}
       className="w-[min(480px,94vw)] rounded-3xl p-0 backdrop:bg-carbon/60 backdrop:backdrop-blur-sm max-sm:mb-0 max-sm:mt-auto max-sm:w-full max-sm:max-w-full max-sm:rounded-b-none"
       aria-labelledby="ntr-titulo"
     >
@@ -81,7 +118,7 @@ export default function NuevaTareaRapida({ abierta, equipo, yoId, fases, faseIni
             <h2 id="ntr-titulo" className="text-lg font-extrabold">Nueva tarea</h2>
             <p className="text-xs text-slate-500">En «{columna}»</p>
           </div>
-          <button type="button" onClick={() => ref.current?.close()} className="btn-icono" aria-label="Cerrar">✕</button>
+          <button type="button" onClick={intentarCerrar} className="btn-icono" aria-label="Cerrar">✕</button>
         </div>
 
         <div>
@@ -112,11 +149,26 @@ export default function NuevaTareaRapida({ abierta, equipo, yoId, fases, faseIni
 
         {error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
 
-        <div className="pie-acciones">
-          <button type="submit" disabled={pending} className="btn-primario">{pending ? 'Creando…' : 'Crear tarea'}</button>
-          <button type="button" onClick={() => crear(true)} disabled={pending} className="btn-suave">Crear y ver detalle</button>
-          <button type="button" onClick={() => ref.current?.close()} className="btn-ghost">Cerrar sin crear</button>
-        </div>
+        {confirmarCierre ? (
+          <div ref={panelCierre} className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4" role="alertdialog" aria-labelledby="ntr-cierre-texto">
+            <p id="ntr-cierre-texto" className="text-sm text-amber-900">
+              <strong>La tarea todavía no se ha creado.</strong> Si cierras sin crearla, se pierde lo que escribiste.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="submit" disabled={pending} className="btn-primario">{pending ? 'Creando…' : 'Crear tarea y cerrar'}</button>
+              <button type="button" onClick={() => setConfirmarCierre(false)} className="btn-ghost">Seguir editando</button>
+              <div className="separador-destructivo">
+                <button type="button" onClick={() => ref.current?.close()} className="btn-destructivo">Cerrar sin crear</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="pie-acciones">
+            <button type="submit" disabled={pending} className="btn-primario">{pending ? 'Creando…' : 'Crear tarea'}</button>
+            <button type="button" onClick={() => crear(true)} disabled={pending} className="btn-suave">Crear y ver detalle</button>
+            <button type="button" onClick={() => ref.current?.close()} className="btn-ghost">Cerrar sin crear</button>
+          </div>
+        )}
         {responsables.some((r) => r !== yoId) && <p className="-mt-2 text-xs text-slate-500">A los responsables les llega un aviso al crearla.</p>}
       </form>
     </dialog>

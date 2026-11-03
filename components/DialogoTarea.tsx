@@ -24,6 +24,19 @@ interface Props {
   eliminacion?: PendienteEliminar;
 }
 
+/** Campos que se guardan con «Guardar cambios» (los pasos y adjuntos se guardan al instante). */
+const CAMPOS_FORM = ['titulo', 'descripcion', 'estado', 'prioridad', 'fecha_inicio', 'fecha_limite', 'fase_id', 'recordar_en', 'mensaje_recordatorio'] as const;
+
+/** ¿Hay algo escrito en la ficha que todavía no se ha guardado? */
+function hayCambios(form: Tarea | null, tarea: Tarea | null) {
+  if (!form || !tarea) return false;
+  const norm = (v: unknown) => (v === null || v === undefined ? '' : String(v));
+  if (CAMPOS_FORM.some((k) => norm(form[k]) !== norm(tarea[k]))) return true;
+  const a = [...(form.responsables || [])].sort().join(',');
+  const b = [...(tarea.responsables || [])].sort().join(',');
+  return a !== b;
+}
+
 /** ISO (UTC) → valor para <input type="datetime-local"> en la hora del navegador. */
 function aLocal(iso: string | null | undefined) {
   if (!iso) return '';
@@ -40,12 +53,31 @@ export default function DialogoTarea({ tarea, equipo, fases, onCerrar, onGuardad
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const [enviando, startEnvio] = useTransition();
+  const [confirmarCierre, setConfirmarCierre] = useState(false);
+  const panelCierre = useRef<HTMLDivElement>(null);
+  const sinGuardar = hayCambios(form, tarea);
+
+  // Si cierran o recargan la pestaña del navegador con cambios sin guardar, el navegador pregunta.
+  useEffect(() => {
+    if (!sinGuardar) return;
+    const avisar = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [sinGuardar]);
+
+  // Al aparecer la pregunta, se lleva a la vista (puede estar abajo si cerraron con la ✕ de arriba).
+  useEffect(() => {
+    if (!confirmarCierre) return;
+    panelCierre.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    panelCierre.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [confirmarCierre]);
 
   useEffect(() => {
     setForm(tarea);
     setError('');
     setAviso(null);
     setConfirmarBorrado(false);
+    setConfirmarCierre(false);
     const d = ref.current;
     if (!d) return;
     if (tarea && !d.open) d.showModal();
@@ -55,6 +87,16 @@ export default function DialogoTarea({ tarea, equipo, fases, onCerrar, onGuardad
   if (!form) return <dialog ref={ref} onClose={onCerrar} />;
 
   const set = <K extends keyof Tarea>(k: K, v: Tarea[K]) => setForm({ ...form, [k]: v });
+
+  /** Cierre por la ✕ o por Esc: si hay cambios sin guardar, primero pregunta. */
+  function intentarCerrar() {
+    if (sinGuardar) {
+      setConfirmarBorrado(false);
+      setConfirmarCierre(true);
+      return;
+    }
+    ref.current?.close();
+  }
 
   function guardar() {
     if (!form || !tarea) return;
@@ -130,7 +172,17 @@ export default function DialogoTarea({ tarea, equipo, fases, onCerrar, onGuardad
   }
 
   return (
-    <dialog ref={ref} onClose={onCerrar} className="w-[min(620px,94vw)] rounded-3xl p-0 backdrop:bg-carbon/60 backdrop:backdrop-blur-sm max-sm:m-0 max-sm:h-full max-sm:max-h-full max-sm:w-full max-sm:max-w-full max-sm:rounded-none" aria-labelledby="dt-titulo">
+    <dialog
+      ref={ref}
+      onClose={onCerrar}
+      onCancel={(e) => {
+        // Tecla Esc (o botón atrás en el celular).
+        if (!sinGuardar) return;
+        e.preventDefault();
+        if (confirmarCierre) setConfirmarCierre(false);
+        else intentarCerrar();
+      }}
+      className="w-[min(620px,94vw)] rounded-3xl p-0 backdrop:bg-carbon/60 backdrop:backdrop-blur-sm max-sm:m-0 max-sm:h-full max-sm:max-h-full max-sm:w-full max-sm:max-w-full max-sm:rounded-none" aria-labelledby="dt-titulo">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -141,7 +193,7 @@ export default function DialogoTarea({ tarea, equipo, fases, onCerrar, onGuardad
         <div className="flex items-start gap-3">
           <label htmlFor="dt-titulo" className="sr-only">Título</label>
           <input id="dt-titulo" value={form.titulo} onChange={(e) => set('titulo', e.target.value)} required maxLength={200} className="w-full rounded-lg border-0 bg-transparent px-0 text-xl font-extrabold tracking-tight focus:ring-0" />
-          <button type="button" onClick={() => ref.current?.close()} className="btn-icono" aria-label="Cerrar">✕</button>
+          <button type="button" onClick={intentarCerrar} className="btn-icono" aria-label="Cerrar">✕</button>
         </div>
 
         <div>
@@ -260,7 +312,20 @@ export default function DialogoTarea({ tarea, equipo, fases, onCerrar, onGuardad
 
         {error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
 
-        {confirmarBorrado ? (
+        {confirmarCierre ? (
+          <div ref={panelCierre} className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4" role="alertdialog" aria-labelledby="dt-cierre-texto">
+            <p id="dt-cierre-texto" className="text-sm text-amber-900">
+              <strong>Tienes cambios sin guardar en «{form.titulo || 'esta tarea'}».</strong> Si cierras sin guardar, se pierden.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="submit" disabled={pending} className="btn-primario">{pending ? 'Guardando…' : 'Guardar y cerrar'}</button>
+              <button type="button" onClick={() => setConfirmarCierre(false)} className="btn-ghost">Seguir editando</button>
+              <div className="separador-destructivo">
+                <button type="button" onClick={() => ref.current?.close()} className="btn-destructivo">Cerrar sin guardar</button>
+              </div>
+            </div>
+          </div>
+        ) : confirmarBorrado ? (
           <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 p-4" role="alertdialog" aria-label="Confirmar eliminación">
             <p className="text-sm text-red-800">
               {equipo.length > 1
