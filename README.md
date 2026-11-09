@@ -59,7 +59,14 @@ Next.js 15 · Supabase (Auth Google, Postgres con RLS) · Tailwind · dnd-kit ·
 ## Puesta en marcha (una sola vez, ~30 min)
 
 ### 1. Supabase
-1. Cree un proyecto en [supabase.com](https://supabase.com) (región más cercana: São Paulo).
+> **Desde el 9-nov-2026 la base es compartida con `teggnar-plataforma`** (proyecto `gestor-proyectos`, East US/Ohio). Los pasos de abajo son la historia de cómo se creó; **no se vuelven a ejecutar**. Las migraciones y la configuración de Auth se manejan desde [`teggnar-plataforma`](https://github.com/teggnar/teggnar-plataforma) (ADR-0010), donde están copiadas `0001`–`0008` y marcadas como aplicadas.
+>
+> Lo que cambió para el gestor con la base compartida:
+> - El registro sigue siendo por invitación: entran los correos de `correos_autorizados` (como antes) y también los invitados de la plataforma, que **no** quedan como miembros del gestor.
+> - Las funciones del gestor ya no las puede ejecutar un visitante sin sesión (solo usuarios con sesión y el servidor).
+> - Sus tablas no cambiaron.
+
+1. Cree un proyecto en [supabase.com](https://supabase.com).
 2. Abra `supabase/migrations/0001_inicial.sql`, **cambie al final el nombre de la empresa y los 3 correos de Gmail**, y ejecútelo completo en *SQL Editor*.
 3. En *Project Settings → API* copie: `Project URL`, `anon public` y `service_role`.
 
@@ -96,7 +103,7 @@ Next.js 15 · Supabase (Auth Google, Postgres con RLS) · Tailwind · dnd-kit ·
 7. Cuando quieran enviar desde un número propio (no el de prueba), se agrega en *WhatsApp → Números de teléfono* y se verifica el negocio. Costo aproximado en Colombia: menos de USD 0,001 por mensaje de utilidad.
 
 ### 6. Revisión cada 15 minutos — Fase 2
-El cron de Vercel (plan gratis) solo corre una vez al día. Para respetar la hora de cada persona y los “Recordar el”, Supabase llama a la app cada 15 minutos: ejecute `supabase/programar_recordatorios.sql` en *SQL Editor* (después de publicar en producción), con su `CRON_SECRET` y la URL de producción.
+El cron de Vercel (plan gratis) solo corre una vez al día. Para respetar la hora de cada persona y los “Recordar el”, Supabase llama a la app cada 15 minutos: ejecute `supabase/programar_recordatorios.sql` en *SQL Editor* (después de publicar en producción), con su `CRON_SECRET` y la URL de producción. Ya está programado en la base compartida; un cambio a ese cron va ahora por `teggnar-plataforma`.
 
 ### Desarrollo local
 ```bash
